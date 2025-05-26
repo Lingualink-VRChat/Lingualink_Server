@@ -1,0 +1,49 @@
+[Unit]
+Description=Lingualink Server - 音频转录和翻译服务
+Documentation=https://github.com/your-org/lingualink-server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=forking
+User=zji
+Group=zji
+
+# 工作目录
+WorkingDirectory=/home/zji/Project/Lingualink_Server
+
+# 环境变量
+Environment="PATH=/home/zji/Project/Lingualink_Server/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/home/zji/Project/Lingualink_Server"
+
+# 加载环境变量文件
+EnvironmentFile=-/home/zji/Project/Lingualink_Server/.env
+
+# 启动命令 - 使用新的管理脚本
+ExecStart=/usr/bin/python3 /home/zji/Project/Lingualink_Server/manage.py start
+ExecStop=/usr/bin/python3 /home/zji/Project/Lingualink_Server/manage.py stop
+ExecReload=/usr/bin/python3 /home/zji/Project/Lingualink_Server/manage.py restart
+
+# PID文件
+PIDFile=/home/zji/Project/Lingualink_Server/lingualink.pid
+
+# 重启策略
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# 安全设置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/zji/Project/Lingualink_Server
+
+# 日志设置
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lingualink-server
+
+[Install]
+WantedBy=multi-user.target 

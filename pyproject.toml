@@ -40,6 +40,7 @@ dev = [
 
 [project.scripts]
 lingualink-server = "src.lingualink.main:start_server"
+
 generate-api-key = "src.lingualink.utils.key_generator:main"
 
 [build-system]

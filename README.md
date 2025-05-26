@@ -97,14 +97,51 @@ python -m src.lingualink.utils.key_generator --name "my-first-key"
 
 ### 5. 启动服务
 
+#### 方式一：使用管理脚本（推荐）
+
+```bash
+# 生产模式启动（后台运行）
+python3 manage.py start
+
+# 开发模式启动（前台运行，自动重载）
+python3 manage.py start --debug
+
+# 查看服务状态
+python3 manage.py status
+
+# 停止服务
+python3 manage.py stop
+
+# 重启服务
+python3 manage.py restart
+
+# 查看日志
+python3 manage.py logs
+
+# 实时跟踪日志
+python3 manage.py logs --follow
+```
+
+#### 方式二：使用便捷脚本
+
+```bash
+# Linux/macOS
+./start.sh              # 生产模式
+./start.sh --debug      # 开发模式
+./stop.sh               # 停止服务
+
+# Windows
+start.bat               # 生产模式
+start.bat --debug       # 开发模式
+```
+
+#### 方式三：使用 uv（兼容旧版）
+
 ```bash
 # 使用 uv
 uv run lingualink-server
 
-# 或直接运行
-python -m src.lingualink.main
-
-# 开发模式 (自动重载)
+# 开发模式
 DEBUG=true uv run lingualink-server
 ```
 

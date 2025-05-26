@@ -1,83 +1,307 @@
-# Lingualink 服务管理 (开发阶段)
+# Lingualink 服务管理指南
 
-本文档提供在开发阶段管理 Lingualink FastAPI 应用的 systemd 服务的基本命令。
+本文档提供 Lingualink Server 的完整服务管理方案，包括开发和生产环境的部署方式。
 
-## 前提
+## 🚀 快速开始
 
-确保 `lingualink.service` 文件已经：
-1.  根据您的环境正确配置（特别是 `User` 和 `WorkingDirectory`）。
-2.  被移动到 `/etc/systemd/system/lingualink.service`。
-3.  `systemd` 已重新加载配置 (`sudo systemctl daemon-reload`)。
+### 统一管理脚本（推荐）
 
-## 常用命令
-
-所有命令通常需要 `sudo` 权限执行。
-
-### 启动服务
+项目提供了统一的 `manage.py` 脚本来管理服务：
 
 ```bash
-sudo systemctl start lingualink.service
+# 启动服务（生产模式，后台运行）
+python3 manage.py start
+
+# 启动服务（开发模式，前台运行，自动重载）
+python3 manage.py start --debug
+
+# 查看服务状态
+python3 manage.py status
+
+# 停止服务
+python3 manage.py stop
+
+# 重启服务
+python3 manage.py restart
+
+# 查看日志（最后50行）
+python3 manage.py logs
+
+# 实时跟踪日志
+python3 manage.py logs --follow
+
+# 清理临时文件
+python3 manage.py cleanup
 ```
 
-### 停止服务
+### 便捷脚本
 
 ```bash
-sudo systemctl stop lingualink.service
+# Linux/macOS
+./start.sh              # 生产模式启动
+./start.sh --debug      # 开发模式启动
+./stop.sh               # 停止服务
+
+# Windows
+start.bat               # 生产模式启动
+start.bat --debug       # 开发模式启动
 ```
 
-### 重启服务
+## 📋 管理脚本详细说明
 
-当您修改了代码并希望服务以新的代码运行时（注意：这不等同于 `uvicorn` 的 `--reload`，您需要确保服务配置中的 `ExecStart` 指向的是您期望运行的应用实例）：
+### 启动选项
 
 ```bash
-sudo systemctl restart lingualink.service
+python3 manage.py start [选项]
+
+选项:
+  --debug, -d           开发模式（自动重载）
+  --port PORT, -p PORT  指定端口（默认5000）
+  --host HOST, -H HOST  指定监听地址（默认0.0.0.0）
 ```
 
-### 查看服务状态
-
-检查服务是否正在运行、上次活动时间、以及是否有错误信息。
+### 日志选项
 
 ```bash
-sudo systemctl status lingualink.service
+python3 manage.py logs [选项]
+
+选项:
+  --lines N, -n N       显示最后N行日志（默认50）
+  --follow, -f          实时跟踪日志
 ```
-按 `q` 退出状态查看。
 
-### 查看服务日志 (实时)
+## 🔧 Systemd 服务管理
 
-实时查看应用的输出日志（包括 `stdout` 和 `stderr`）。这对于调试非常有用。
+### 安装 Systemd 服务
 
+1. **复制服务文件**：
 ```bash
-sudo journalctl -u lingualink.service -f
+sudo cp lingualink.service /etc/systemd/system/
 ```
-按 `Ctrl+C` 停止查看日志。
 
-### 查看全部服务日志
-
-查看服务自启动以来所有的日志。
-
+2. **重新加载 systemd 配置**：
 ```bash
-sudo journalctl -u lingualink.service
+sudo systemctl daemon-reload
 ```
-可以使用箭头键滚动，按 `q` 退出。
 
-### 开机自启 (可选，生产环境推荐)
-
-如果您希望服务在系统启动时自动运行：
-
+3. **启用服务（开机自启）**：
 ```bash
 sudo systemctl enable lingualink.service
 ```
 
-### 禁止开机自启 (开发阶段可能更常用)
-
-如果您不希望服务在系统启动时自动运行：
+### Systemd 服务命令
 
 ```bash
+# 启动服务
+sudo systemctl start lingualink.service
+
+# 停止服务
+sudo systemctl stop lingualink.service
+
+# 重启服务
+sudo systemctl restart lingualink.service
+
+# 查看服务状态
+sudo systemctl status lingualink.service
+
+# 查看服务日志
+sudo journalctl -u lingualink.service
+
+# 实时跟踪日志
+sudo journalctl -u lingualink.service -f
+
+# 启用开机自启
+sudo systemctl enable lingualink.service
+
+# 禁用开机自启
 sudo systemctl disable lingualink.service
 ```
 
-## 注意事项 (开发阶段)
+## 🐳 Docker 部署
 
-*   **代码更新**: 如果您更新了应用代码，您需要**重启服务** (`sudo systemctl restart lingualink.service`) 才能让更改生效。`systemd` 本身不会像 `uvicorn --reload` 那样自动侦测代码变化。
-*   **虚拟环境**: 服务配置 (`lingualink.service`) 中的 `ExecStart` 和 `Environment="PATH=..."` 已确保使用项目内的 `.venv` 虚拟环境。对虚拟环境的任何更改（如安装新包）后，可能需要重启服务。
-*   **端口占用**: 确保端口 `5000` (或您在 `ExecStart` 中配置的端口) 没有被其他应用占用。 
+### 创建 Dockerfile
+
+```dockerfile
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 uv
+RUN pip install uv
+
+# 复制项目文件
+COPY . .
+
+# 安装依赖
+RUN uv sync --frozen
+
+# 创建日志目录
+RUN mkdir -p logs
+
+# 暴露端口
+EXPOSE 5000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5000/api/v1/health || exit 1
+
+# 启动服务
+CMD ["python3", "manage.py", "start"]
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+
+services:
+  lingualink-server:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=5000
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+## 📊 监控和日志
+
+### 日志文件位置
+
+- **应用日志**: `logs/lingualink.log`
+- **PID 文件**: `lingualink.pid`
+- **Systemd 日志**: `journalctl -u lingualink.service`
+
+### 日志级别
+
+- **生产模式**: INFO 级别
+- **开发模式**: DEBUG 级别
+
+### 监控检查
+
+```bash
+# 检查服务是否运行
+python3 manage.py status
+
+# 检查端口是否监听
+netstat -tlnp | grep :5000
+
+# 检查健康状态
+curl http://localhost:5000/api/v1/health
+```
+
+## 🔧 故障排除
+
+### 常见问题
+
+1. **端口被占用**：
+```bash
+# 查看端口占用
+sudo lsof -i :5000
+
+# 杀死占用进程
+sudo kill -9 <PID>
+```
+
+2. **权限问题**：
+```bash
+# 确保脚本有执行权限
+chmod +x manage.py start.sh stop.sh
+```
+
+3. **虚拟环境问题**：
+```bash
+# 重新创建虚拟环境
+uv sync
+```
+
+4. **服务启动失败**：
+```bash
+# 查看详细日志
+python3 manage.py logs --follow
+
+# 检查配置文件
+cat .env
+```
+
+### 清理和重置
+
+```bash
+# 停止所有相关进程
+python3 manage.py stop
+sudo systemctl stop lingualink.service
+
+# 清理临时文件
+python3 manage.py cleanup
+
+# 重新启动
+python3 manage.py start
+```
+
+## 🔄 版本升级
+
+### 升级步骤
+
+1. **停止服务**：
+```bash
+python3 manage.py stop
+```
+
+2. **备份配置**：
+```bash
+cp .env .env.backup
+```
+
+3. **更新代码**：
+```bash
+git pull origin main
+```
+
+4. **更新依赖**：
+```bash
+uv sync
+```
+
+5. **重启服务**：
+```bash
+python3 manage.py start
+```
+
+## 📝 最佳实践
+
+### 开发环境
+
+- 使用 `--debug` 模式进行开发
+- 定期查看日志排查问题
+- 使用 `manage.py` 脚本管理服务
+
+### 生产环境
+
+- 使用 systemd 服务管理
+- 启用开机自启
+- 配置日志轮转
+- 设置监控告警
+- 定期备份配置文件
+
+### 安全建议
+
+- 限制服务运行用户权限
+- 配置防火墙规则
+- 使用强密码和API密钥
+- 定期更新依赖包
+- 监控异常访问 
