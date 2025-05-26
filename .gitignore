@@ -11,3 +11,18 @@ wheels/
 
 # Environment variables
 .env
+
+# Database files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Log files
+logs/
+*.log
+
+# IDE & OS specific
+.vscode/
+.idea/
+.DS_Store

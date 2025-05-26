@@ -1,264 +1,256 @@
-# 🔐 Lingualink Server 认证配置指南
+# 🔐 Lingualink Server 认证配置指南 v2.0
 
 ## 📋 概述
 
-Lingualink Server 使用两种不同的认证机制来保护 API 访问：
+Lingualink Server 使用以下认证和授权机制：
 
-1. **API_KEYS** - 用于 API 访问控制的简单密钥认证
-2. **SECRET_KEY** - 用于内部加密和签名的应用密钥
+1. **API密钥 (API Keys)** - 用于客户端访问API的身份验证，存储在SQLite数据库中。
+2. **应用密钥 (SECRET_KEY)** - 用于应用内部的加密和签名操作，配置在 `.env` 文件中。
 
-## 🔑 API_KEYS vs SECRET_KEY 详解
+## 🔑 API密钥 vs 应用密钥
 
-### API_KEYS（API 访问密钥）
+### API密钥 (API Keys)
 
-**用途**：用于验证客户端对 API 的访问权限
+**用途**: 验证客户端对API的访问权限
+**存储**: SQLite数据库 (`data/api_keys.db`)
+**管理**: 通过 `manage_api_keys.py` 工具或API接口进行管理
 
-**特点**：
-- ✅ 可以有多个密钥（支持多个客户端）
-- ✅ 客户端在请求时需要提供
-- ✅ 可以独立生成、撤销和管理
-- ✅ 用于 HTTP 请求的身份验证
+**特点**:
+- ✅ 可以动态创建、撤销和管理多个密钥
+- ✅ 支持设置密钥名称、描述和有效期
+- ✅ 记录使用次数和最后使用时间
+- ✅ 客户端在请求时通过 `X-API-Key` 或 `Authorization: Bearer` 头部提供
 
-**使用场景**：
-- 客户端调用 API 时提供的凭证
-- 可以为不同的客户端/应用分发不同的密钥
-- 密钥泄露时可以单独撤销某个密钥
+**使用场景**:
+- 控制不同客户端或应用的API访问
+- 为临时访问或特定场景创建带有效期的密钥
 
-### SECRET_KEY（应用密钥）
+### 应用密钥 (SECRET_KEY)
 
-**用途**：用于应用内部的数据加密、签名和安全操作
+**用途**: 应用内部的数据加密、签名和安全操作
+**存储**: `.env` 文件
+**管理**: 手动在 `.env` 文件中配置
 
-**特点**：
+**特点**:
 - ✅ 只有一个，整个应用共享
-- ✅ 客户端永远不应该知道这个密钥
-- ✅ 用于服务器内部的安全操作
-- ✅ 更改后会影响所有现有的加密数据
+- ✅ 客户端永远不应该知道此密钥
+- ✅ 更改后会影响所有现有的加密数据和会话
 
-**使用场景**：
-- JWT Token 签名
+**使用场景**:
+- JWT Token 签名 (如果未来实现)
 - 会话数据加密
 - 内部数据签名验证
 - 其他需要服务器端加密的场景
 
 ## 🚀 快速配置
 
-### 步骤 1：生成 SECRET_KEY
+### 步骤 1：生成应用密钥 (SECRET_KEY)
 
 ```bash
 # 生成一个强随机密钥
 python3 -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(32))"
 ```
 
-示例输出：
-```
-SECRET_KEY=xK9mN2pQ7rS4vT8wZ1aB5cD6eF9gH3jL4mN7pQ0rS5tU8wX1aB4cD7eF0gH2jK5m
+将生成的 `SECRET_KEY` 添加到你的 `.env` 文件中。
+
+### 步骤 2：配置数据库路径 (可选)
+
+默认API密钥数据库路径为 `data/api_keys.db`。如果需要更改，请在 `.env` 文件中设置：
+```env
+DATABASE_PATH=your/custom/path/api_keys.db
 ```
 
-### 步骤 2：生成 API_KEYS
+### 步骤 3：生成第一个API密钥
 
+使用 `manage_api_keys.py` 工具在本地生成第一个API密钥。强烈建议将第一个密钥设置为**管理员密钥**，以便后续管理。
 ```bash
-# 使用项目提供的工具生成 API 密钥
-uv run generate-api-key --name "主要客户端"
+# 生成一个名为 "admin-key" 的永久管理员密钥
+python3 manage_api_keys.py --local generate --name "admin-key" --description "Administrator key" --make-admin
 
-# 或者直接使用 Python
-python3 -c "import secrets; print('lls_' + secrets.token_urlsafe(32))"
+# 或者，如果已生成密钥，可以后续设置为管理员
+# python3 manage_api_keys.py --local generate --name "initial-key"
+# python3 manage_api_keys.py --local set-admin <initial_key_value> true
 ```
 
-示例输出：
-```
-Generated API Key: lls_xK9mN2pQ7rS4vT8wZ1aB5cD6eF9gH3jL4mN7pQ0rS5tU8wX1
-Key Name: 主要客户端
+**重要**: 请妥善保管生成的API密钥，它将用于后续API请求的认证。
 
-Please save this API key securely. You will need it to access the API.
-Add it to your .env file as:
-API_KEYS=["your-existing-keys", "lls_xK9mN2pQ7rS4vT8wZ1aB5cD6eF9gH3jL4mN7pQ0rS5tU8wX1"]
-```
-
-### 步骤 3：配置 .env 文件
+### 步骤 4：配置 `.env` 文件示例
 
 ```env
-# 应用密钥（用于内部加密）
+# 应用密钥 (用于内部加密)
 SECRET_KEY=xK9mN2pQ7rS4vT8wZ1aB5cD6eF9gH3jL4mN7pQ0rS5tU8wX1aB4cD7eF0gH2jK5m
 
-# API 访问密钥（用于客户端认证）
-API_KEYS=["lls_xK9mN2pQ7rS4vT8wZ1aB5cD6eF9gH3jL4mN7pQ0rS5tU8wX1"]
+# 数据库文件路径 (用于存储API密钥)
+DATABASE_PATH=data/api_keys.db
 
 # 启用认证
 AUTH_ENABLED=true
 ```
 
-## 🔧 详细配置
+**注意**: `API_KEYS` 和 `API_KEYS_METADATA` 已被移除，因为密钥现在存储在数据库中。
 
-### 多个 API 密钥管理
+## 🔧 API密钥管理 (`manage_api_keys.py`)
 
-```env
-# 支持多个 API 密钥，用于不同的客户端
-API_KEYS=[
-  "lls_client1_key_here",
-  "lls_client2_key_here", 
-  "lls_mobile_app_key_here",
-  "lls_web_dashboard_key_here"
-]
+`manage_api_keys.py` 是一个强大的命令行工具，用于管理API密钥。它支持本地模式（直接操作数据库）和远程模式（通过API与运行中的服务交互）。
+
+### 本地模式 (推荐)
+
+本地模式直接操作SQLite数据库，无需运行服务器。适合初始化设置和维护。
+
+**基本命令格式**:
+`python3 manage_api_keys.py --local [命令] [选项]`
+
+**常用命令**:
+- `generate`: 生成新密钥
+  ```bash
+  python3 manage_api_keys.py --local generate --name "my-client" --expires-in-days 30 --description "Client key"
+  ```
+- `list`: 列出所有密钥
+  ```bash
+  python3 manage_api_keys.py --local list
+  python3 manage_api_keys.py --local list --include-inactive  # 包含已撤销的
+  ```
+- `revoke`: 撤销密钥
+  ```bash
+  python3 manage_api_keys.py --local revoke --key <api_key_to_revoke>
+  ```
+- `verify`: 验证密钥 (显示详细信息)
+  ```bash
+  python3 manage_api_keys.py --local verify --api-key <api_key_to_verify>
+  ```
+- `set-admin`: 设置或撤销密钥的管理员权限 (仅本地模式)
+  ```bash
+  python3 manage_api_keys.py --local set-admin <api_key_value> true
+  python3 manage_api_keys.py --local set-admin <api_key_value> false
+  ```
+
+### 远程模式
+
+远程模式通过API与正在运行的Lingualink Server实例交互。需要提供一个有效的 **管理员API密钥** 进行认证。
+
+**基本命令格式**:
+`python3 manage_api_keys.py --api-key <your_auth_key> [命令] [选项]`
+
+**常用命令** (与本地模式类似，但通过API执行):
+- `generate`, `list`, `revoke`, `verify`
+
+**示例**:
+```bash
+# 使用现有密钥 <admin_key> 生成一个新密钥
+python3 manage_api_keys.py --api-key <admin_key> generate --name "new-user" --expires-in-days 7
 ```
 
-### 生产环境安全配置
+## ⏰ API密钥有效期管理
 
-```env
-# 生产环境强密钥示例
-SECRET_KEY=prod_very_long_and_random_secret_key_change_this_in_production_123456
-API_KEYS=["lls_prod_client_key_12345", "lls_prod_admin_key_67890"]
+### 有效期概念
 
-# 启用认证
-AUTH_ENABLED=true
+API密钥支持设置有效期，提供更好的安全控制：
 
-# 较短的令牌过期时间
-ACCESS_TOKEN_EXPIRE_MINUTES=15
+- **永久密钥**: `expires_at: null`，适用于长期服务
+- **临时密钥**: 设置具体过期时间，适用于临时访问、测试或租期使用
+
+### 设置有效期的方式
+
+#### 1. 生成时设置
+```bash
+# 本地模式生成30天有效期的密钥
+python3 manage_api_keys.py --local generate --name "temp-client" --expires-in-days 30
+
+# 远程模式通过API设置
+curl -X POST "http://localhost:5000/api/v1/auth/generate_key" \
+  -H "X-API-Key: <admin_key>" \
+  -d "name=temp-key&expires_in_days=30&description=API generated temp key"
 ```
 
-## 📡 客户端使用方式
+### 监控和管理有效期
 
-### 方式 1：X-API-Key 头部（推荐）
+#### 1. 查看密钥状态
+```bash
+# 使用管理工具查看所有密钥状态 (本地模式)
+python3 manage_api_keys.py --local list
+
+# 输出示例：
+# 🗝️  共找到 2 个API密钥:
+# ====================================================================================================
+# 
+# #1 密钥: admin-key
+#    ID: 1
+#    创建时间: 2024-01-01 12:00:00
+#    过期时间: 永不过期
+#    使用次数: 156
+#    最后使用: 2024-01-15 10:00:00
+#    状态: ✅ 永久有效
+#    活跃状态: ✅ 活跃
+#    创建者: local_cli
+#    描述: Administrator key
+# 
+# #2 密钥: temp-user
+#    ID: 2
+#    创建时间: 2024-01-15 12:00:00
+#    过期时间: 2024-02-14 12:00:00
+#    使用次数: 42
+#    最后使用: 2024-01-20 08:30:00
+#    状态: ✅ 15天后过期
+#    活跃状态: ✅ 活跃
+#    创建者: local_cli
+#    权限: 👑 管理员
+#    描述: Temporary access for testing
+```
+
+#### 2. 验证单个密钥
+```bash
+python3 manage_api_keys.py --local verify --api-key <api_key_to_verify>
+```
+
+### 自动清理过期密钥
+
+服务器提供了API端点 `/api/v1/auth/cleanup_expired` 来自动将已过期的密钥设置为非活跃状态。你可以定期调用此端点。
 
 ```bash
-curl -X POST "http://localhost:5000/api/v1/translate_audio" \
-  -H "X-API-Key: lls_xK9mN2pQ7rS4vT8wZ1aB5cD6eF9gH3jL4mN7pQ0rS5tU8wX1" \
-  -F "audio_file=@test.wav" \
-  -F "user_prompt=请处理下面的音频。"
-```
-
-### 方式 2：Authorization Bearer 头部
-
-```bash
-curl -X POST "http://localhost:5000/api/v1/translate_audio" \
-  -H "Authorization: Bearer lls_xK9mN2pQ7rS4vT8wZ1aB5cD6eF9gH3jL4mN7pQ0rS5tU8wX1" \
-  -F "audio_file=@test.wav" \
-  -F "user_prompt=请处理下面的音频。"
-```
-
-### Python 客户端示例
-
-```python
-import requests
-
-# 配置
-API_BASE_URL = "http://localhost:5000/api/v1"
-API_KEY = "lls_xK9mN2pQ7rS4vT8wZ1aB5cD6eF9gH3jL4mN7pQ0rS5tU8wX1"
-
-# 请求头
-headers = {
-    "X-API-Key": API_KEY
-}
-
-# 健康检查
-response = requests.get(f"{API_BASE_URL}/health", headers=headers)
-print(response.json())
-
-# 音频翻译
-with open("test.wav", "rb") as audio_file:
-    files = {"audio_file": audio_file}
-    data = {
-        "user_prompt": "请处理下面的音频。",
-        "target_languages": ["英文", "日文"]
-    }
-    response = requests.post(
-        f"{API_BASE_URL}/translate_audio",
-        headers=headers,
-        files=files,
-        data=data
-    )
-    print(response.json())
+curl -X POST "http://localhost:5000/api/v1/auth/cleanup_expired" -H "X-API-Key: <admin_key>"
 ```
 
 ## 🛡️ 安全最佳实践
 
-### 1. SECRET_KEY 安全
+### 1. 应用密钥 (SECRET_KEY) 安全
+- 保持 `SECRET_KEY` 的机密性，不要泄露。
+- 使用至少32个字符的随机字符串。
+- 定期轮换 `SECRET_KEY`，特别是在发生安全事件后。
 
-```bash
-# ✅ 好的做法
-SECRET_KEY=very_long_random_string_with_at_least_32_characters_12345
+### 2. API密钥安全
+- **最小权限原则**: 为不同客户端或服务生成不同的API密钥。普通密钥不应授予管理员权限。
+- **管理员密钥保护**: 严格保护管理员密钥，仅用于必要的管理操作。
+- **有效期**: 为临时访问或测试密钥设置合理的有效期。
+- **定期审计**: 使用 `manage_api_keys.py --local list --include-inactive` 定期审计密钥列表。
+- **安全存储**: 客户端应安全存储其API密钥。
+- **密钥轮换**: 定期轮换长期使用的API密钥。
 
-# ❌ 不好的做法
-SECRET_KEY=123456
-SECRET_KEY=my-secret-key
-SECRET_KEY=your-secret-key-change-this  # 默认值
-```
-
-**注意事项**：
-- 至少 32 个字符长度
-- 使用随机生成的字符串
-- 不要使用可预测的内容
-- 生产环境必须更改默认值
-
-### 2. API_KEYS 安全
-
-```bash
-# ✅ 好的做法
-API_KEYS=["lls_very_long_random_api_key_string"]
-
-# ❌ 不好的做法
-API_KEYS=["simple-key"]
-API_KEYS=["lls_example_key_replace_with_real_key"]  # 默认值
-```
-
-**注意事项**：
-- 使用 `lls_` 前缀便于识别
-- 至少 32 个字符的随机字符串
-- 定期轮换密钥
-- 为不同客户端使用不同密钥
-
-### 3. 密钥管理
-
-```bash
-# 生成强密钥的便捷命令
-generate_secret() {
-    python3 -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(32))"
-}
-
-generate_api_key() {
-    python3 -c "import secrets; print('lls_' + secrets.token_urlsafe(32))"
-}
-
-# 使用
-generate_secret
-generate_api_key
-```
+### 3. 数据库安全
+- 保护 `data/api_keys.db` 文件的访问权限。
+- 定期备份数据库文件。
 
 ## 🔄 密钥轮换
 
-### 轮换 SECRET_KEY
+### 轮换应用密钥 (SECRET_KEY)
 
-**⚠️ 注意**：更改 SECRET_KEY 会使所有现有的 JWT token 失效
+**⚠️ 注意**: 更改 `SECRET_KEY` 会使所有依赖于它的现有加密数据（如会话）失效。
 
-```bash
-# 1. 生成新的 SECRET_KEY
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+1. 生成新的 `SECRET_KEY`。
+2. 更新 `.env` 文件中的 `SECRET_KEY` 值。
+3. 重启 Lingualink Server。
 
-# 2. 更新 .env 文件
-# SECRET_KEY=新生成的密钥
+### 轮换API密钥
 
-# 3. 重启服务
-python3 manage.py restart
-```
-
-### 轮换 API_KEYS
-
-**✅ 安全**：可以渐进式轮换，不会影响现有客户端
-
-```bash
-# 1. 生成新的 API 密钥
-uv run generate-api-key --name "新客户端"
-
-# 2. 添加到现有密钥列表（保持旧密钥）
-API_KEYS=["旧密钥1", "旧密钥2", "新密钥"]
-
-# 3. 重启服务
-python3 manage.py restart
-
-# 4. 更新客户端使用新密钥
-
-# 5. 移除旧密钥
-API_KEYS=["新密钥"]
-```
+1. 使用 `manage_api_keys.py` 或API生成新的API密钥，并设置合适的有效期和描述。
+   ```bash
+   python3 manage_api_keys.py --local generate --name "new-client-key-v2" --expires-in-days 90
+   ```
+2. 将新密钥分发给相关客户端。
+3. 监控旧密钥的使用情况 (`last_used_at` 字段)。
+4. 在确认所有客户端已切换到新密钥后，撤销旧密钥。
+   ```bash
+   python3 manage_api_keys.py --local revoke --key <old_api_key>
+   ```
 
 ## 🧪 测试认证
 
@@ -267,10 +259,10 @@ API_KEYS=["新密钥"]
 ```bash
 #!/bin/bash
 
-API_KEY="your-api-key-here"
+API_KEY="<your_generated_api_key>"
 BASE_URL="http://localhost:5000/api/v1"
 
-echo "=== 测试健康检查 ==="
+echo "=== 测试健康检查 (需要有效密钥) ==="
 curl -H "X-API-Key: $API_KEY" "$BASE_URL/health"
 
 echo -e "\n=== 测试认证验证 ==="
@@ -283,58 +275,44 @@ curl -H "X-API-Key: invalid-key" "$BASE_URL/health"
 ### 验证配置
 
 ```bash
-# 检查配置是否正确加载
-python3 -c "
-from config.settings import settings
-print(f'认证启用: {settings.auth_enabled}')
-print(f'API密钥数量: {len(settings.api_keys)}')
-print(f'SECRET_KEY长度: {len(settings.secret_key)}')
-"
+# 检查配置是否正确加载 (主要检查AUTH_ENABLED和DATABASE_PATH)
+python3 -c "from config.settings import settings; print(f'认证启用: {settings.auth_enabled}'); print(f'数据库路径: {settings.database_path}')"
+
+# 检查数据库文件是否存在
+ls -l data/api_keys.db
 ```
 
 ## 🐛 常见问题
 
 ### 1. 认证失败
 
-**错误**: `{"detail": "Invalid API key"}`
+**错误**: `{"detail": "Invalid or expired API key."}` 或 `{"detail": "Admin privileges required for this operation."}`
 
-**解决方案**：
-```bash
-# 检查 API 密钥是否在配置中
-python3 -c "
-from config.settings import settings
-print('配置的API密钥:', settings.api_keys)
-"
+**解决方案**:
+- 确认提供的API密钥是否正确。
+- 使用 `python3 manage_api_keys.py --local verify --api-key <your_key>` 检查密钥状态（是否激活、是否过期、是否为管理员）。
+- 确保证书启用 (`AUTH_ENABLED=true` in `.env`)。
+- 如果操作需要管理员权限，请确保使用的密钥是管理员密钥。
 
-# 检查密钥格式
-echo "你的密钥应该以 'lls_' 开头"
-```
+### 2. 数据库问题
 
-### 2. 配置加载失败
+**错误**: `sqlalchemy.exc...` 或无法连接数据库
 
-**错误**: `ValidationError`
+**解决方案**:
+- 确认 `DATABASE_PATH` 在 `.env` 文件中配置正确。
+- 检查 `data/` 目录 (或自定义路径) 是否有写入权限。
+- 确保SQLite3已正确安装和配置。
 
-**解决方案**：
-```bash
-# 检查 .env 文件格式
-cat .env | grep -E "(SECRET_KEY|API_KEYS)"
+### 3. 禁用认证 (仅开发环境)
 
-# API_KEYS 必须是 JSON 格式的字符串数组
-# 正确格式: API_KEYS=["key1", "key2"]
-# 错误格式: API_KEYS=key1,key2
-```
-
-### 3. 禁用认证（仅开发环境）
-
+在 `.env` 文件中设置:
 ```env
-# 临时禁用认证用于测试
 AUTH_ENABLED=false
 ```
-
-**注意**：生产环境绝不应该禁用认证！
+**注意**: 生产环境绝不应该禁用认证！
 
 ## 📚 相关文档
 
 - [快速启动指南](../QUICK_START.md)
 - [服务管理指南](../SERVICE_MANAGEMENT.md)
-- [API 文档](http://localhost:5000/docs)（启动服务后访问） 
+- [API 文档](http://localhost:5000/docs) (启动服务后访问) 

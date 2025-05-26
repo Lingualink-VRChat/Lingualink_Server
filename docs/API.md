@@ -24,9 +24,13 @@ Authorization: Bearer lls_your_api_key_here
 
 ### 获取 API 密钥
 
-使用命令行工具生成：
+使用管理工具生成：
 ```bash
-uv run generate-api-key --name "my-key"
+# 本地模式生成 (推荐，无需服务器运行)
+python3 manage_api_keys.py --local generate --name "my-key" --expires-in-days 30 --description "Test key"
+
+# 远程模式生成 (需要服务器运行和有效密钥)
+python3 manage_api_keys.py --api-key <admin_key> generate --name "my-key" --expires-in-days 30
 ```
 
 ## 端点详情
@@ -160,14 +164,30 @@ curl -X POST "http://localhost:5000/api/v1/translate_audio" \
   "status": "success",
   "message": "API key is valid",
   "data": {
+    "id": 1,
     "name": "my-key",
-    "created_at": "2024-01-01T12:00:00.000Z",
-    "expires_at": null,
+    "created_at": "2024-01-01T12:00:00Z",
+    "expires_at": "2024-02-01T12:00:00Z",
+    "is_active": true,
     "usage_count": 42,
-    "is_active": true
+    "rate_limit": null,
+    "description": "Test key",
+    "created_by": "local_cli",
+    "last_used_at": "2024-01-15T10:00:00Z",
+    "is_expired": false,
+    "is_valid": true
   }
 }
 ```
+
+**字段说明**:
+- `id`: 密钥ID
+- `expires_at`: 过期时间，`null` 表示永不过期
+- `description`: 密钥描述
+- `created_by`: 创建者
+- `last_used_at`: 最后使用时间
+- `is_expired`: 是否已过期
+- `is_valid`: 是否有效（活跃且未过期）
 
 #### POST /api/v1/auth/generate_key
 生成新的 API 密钥。
@@ -177,12 +197,13 @@ curl -X POST "http://localhost:5000/api/v1/translate_audio" \
 **请求参数**:
 - `name` (string, optional): 密钥名称
 - `expires_in_days` (integer, optional): 过期天数
+- `description` (string, optional): 密钥描述
 
 **请求示例**:
 ```bash
 curl -X POST "http://localhost:5000/api/v1/auth/generate_key" \
   -H "X-API-Key: lls_your_api_key" \
-  -d "name=new-key&expires_in_days=30"
+  -d "name=new-key&expires_in_days=30&description=New key for testing"
 ```
 
 **响应示例**:
@@ -193,7 +214,9 @@ curl -X POST "http://localhost:5000/api/v1/auth/generate_key" \
   "data": {
     "api_key": "lls_new_generated_key_here",
     "name": "new-key",
-    "expires_in_days": 30
+    "expires_in_days": 30,
+    "expires_at": "2024-02-01T12:00:00Z",
+    "description": "New key for testing"
   }
 }
 ```
@@ -203,6 +226,9 @@ curl -X POST "http://localhost:5000/api/v1/auth/generate_key" \
 
 **需要鉴权**
 
+**请求参数**:
+- `include_inactive` (boolean, optional, default=false): 是否包含已撤销的密钥
+
 **响应示例**:
 ```json
 {
@@ -210,12 +236,18 @@ curl -X POST "http://localhost:5000/api/v1/auth/generate_key" \
   "data": {
     "keys": [
       {
+        "id": 1,
         "name": "my-key",
-        "created_at": "2024-01-01T12:00:00.000Z",
-        "expires_at": null,
+        "created_at": "2024-01-01T12:00:00Z",
+        "expires_at": "2024-02-01T12:00:00Z",
         "is_active": true,
         "usage_count": 42,
-        "rate_limit": null
+        "rate_limit": null,
+        "description": "Test key",
+        "created_by": "local_cli",
+        "last_used_at": "2024-01-15T10:00:00Z",
+        "is_expired": false,
+        "is_valid": true
       }
     ],
     "total": 1
@@ -243,6 +275,56 @@ curl -X POST "http://localhost:5000/api/v1/auth/revoke_key" \
 {
   "status": "success",
   "message": "API key revoked successfully"
+}
+```
+
+### 4. 更新密钥描述
+
+#### PUT /api/v1/auth/update_description
+更新指定API密钥的描述信息。
+
+**需要鉴权**
+
+**请求参数**:
+- `api_key_to_update` (string, required): 要更新的API密钥
+- `description` (string, required): 新的描述信息
+
+**请求示例**:
+```bash
+curl -X PUT "http://localhost:5000/api/v1/auth/update_description" \
+  -H "X-API-Key: lls_your_api_key" \
+  -d "api_key_to_update=lls_key_to_update&description=New key description"
+```
+
+**响应示例**:
+```json
+{
+  "status": "success",
+  "message": "API key description updated successfully"
+}
+```
+
+### 5. 清理过期密钥
+
+#### POST /api/v1/auth/cleanup_expired
+清理所有已过期的API密钥。
+
+**需要鉴权**
+
+**请求示例**:
+```bash
+curl -X POST "http://localhost:5000/api/v1/auth/cleanup_expired" \
+  -H "X-API-Key: lls_your_api_key"
+```
+
+**响应示例**:
+```json
+{
+  "status": "success",
+  "message": "Cleaned up 5 expired API keys",
+  "data": {
+    "cleaned_count": 5
+  }
 }
 ```
 

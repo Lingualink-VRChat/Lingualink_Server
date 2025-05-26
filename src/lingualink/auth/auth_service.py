@@ -3,102 +3,283 @@ import secrets
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from config.settings import settings
+from ..models.database import APIKey, get_db_session
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 class AuthService:
-    """简单的鉴权服务"""
+    """基于数据库的鉴权服务"""
     
     def __init__(self):
-        self.api_keys: Dict[str, dict] = {}
-        self._load_api_keys()
+        """初始化鉴权服务"""
+        logger.info("Auth service initialized with database backend")
     
-    def _load_api_keys(self):
-        """从配置加载API密钥"""
-        for api_key in settings.api_keys:
-            self.api_keys[api_key] = {
-                "name": f"key_{api_key[:8]}",
-                "created_at": datetime.now(),
-                "expires_at": None,
-                "is_active": True,
-                "usage_count": 0,
-                "rate_limit": None
-            }
-        logger.info(f"Loaded {len(self.api_keys)} API keys")
-    
-    def generate_api_key(self, name: Optional[str] = None, expires_in_days: Optional[int] = None) -> str:
-        """生成新的API密钥"""
+    def generate_api_key(self, name: Optional[str] = None, expires_in_days: Optional[int] = None, 
+                        description: Optional[str] = None, created_by: str = "system",
+                        is_admin: bool = False) -> str:
+        """
+        生成新的API密钥
+        
+        Args:
+            name: 密钥名称
+            expires_in_days: 过期天数
+            description: 密钥描述
+            created_by: 创建者
+            is_admin: 是否为管理员密钥
+            
+        Returns:
+            str: 生成的API密钥
+        """
         api_key = f"lls_{secrets.token_urlsafe(32)}"
         expires_at = None
         if expires_in_days:
-            expires_at = datetime.now() + timedelta(days=expires_in_days)
+            expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
         
-        self.api_keys[api_key] = {
-            "name": name or f"key_{api_key[:8]}",
-            "created_at": datetime.now(),
-            "expires_at": expires_at,
-            "is_active": True,
-            "usage_count": 0,
-            "rate_limit": None
-        }
-        
-        logger.info(f"Generated new API key: {name or api_key[:8]}")
-        return api_key
+        # 保存到数据库
+        session = get_db_session()
+        try:
+            key_record = APIKey(
+                api_key=api_key,
+                name=name or f"key_{api_key[:8]}",
+                expires_at=expires_at,
+                description=description,
+                created_by=created_by,
+                is_admin=is_admin
+            )
+            session.add(key_record)
+            session.commit()
+            
+            logger.info(f"Generated new API key: {name or key_record.name}")
+            return api_key
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to generate API key: {e}")
+            raise
+        finally:
+            session.close()
     
     def verify_api_key(self, api_key: str) -> bool:
-        """验证API密钥"""
+        """
+        验证API密钥
+        
+        Args:
+            api_key: API密钥
+            
+        Returns:
+            bool: 是否有效
+        """
         if not settings.auth_enabled:
             return True
+        
+        session = get_db_session()
+        try:
+            key_record = session.query(APIKey).filter(APIKey.api_key == api_key).first()
             
-        if api_key not in self.api_keys:
-            logger.warning(f"Invalid API key attempted: {api_key[:8]}...")
-            return False
-        
-        key_info = self.api_keys[api_key]
-        
-        # 检查是否激活
-        if not key_info["is_active"]:
-            logger.warning(f"Inactive API key attempted: {api_key[:8]}...")
-            return False
-        
-        # 检查是否过期
-        if key_info["expires_at"] and datetime.now() > key_info["expires_at"]:
-            logger.warning(f"Expired API key attempted: {api_key[:8]}...")
-            return False
-        
-        # 更新使用次数
-        key_info["usage_count"] += 1
-        logger.debug(f"API key verified: {key_info['name']}, usage: {key_info['usage_count']}")
-        
-        return True
+            if not key_record:
+                logger.warning(f"Invalid API key attempted: {api_key[:8]}...")
+                return False, False  # valid, is_admin
+            
+            is_admin = key_record.is_admin
+            
+            if not key_record.is_valid():
+                if key_record.is_expired():
+                    logger.warning(f"Expired API key attempted: {api_key[:8]}...")
+                else:
+                    logger.warning(f"Inactive API key attempted: {api_key[:8]}...")
+                return False, is_admin
+            
+            # 更新使用次数和最后使用时间
+            key_record.usage_count += 1
+            key_record.last_used_at = datetime.utcnow()
+            session.commit()
+            
+            logger.debug(f"API key verified: {key_record.name}, usage: {key_record.usage_count}")
+            return True, is_admin
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error verifying API key: {e}")
+            return False, False
+        finally:
+            session.close()
     
     def revoke_api_key(self, api_key: str) -> bool:
-        """撤销API密钥"""
-        if api_key in self.api_keys:
-            self.api_keys[api_key]["is_active"] = False
-            logger.info(f"API key revoked: {self.api_keys[api_key]['name']}")
+        """
+        撤销API密钥（设置为非活跃状态）
+        
+        Args:
+            api_key: 要撤销的API密钥
+            
+        Returns:
+            bool: 是否成功撤销
+        """
+        session = get_db_session()
+        try:
+            key_record = session.query(APIKey).filter(APIKey.api_key == api_key).first()
+            
+            if not key_record:
+                return False
+            
+            key_record.is_active = False
+            session.commit()
+            
+            logger.info(f"API key revoked: {key_record.name}")
             return True
-        return False
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error revoking API key: {e}")
+            return False
+        finally:
+            session.close()
     
-    def list_api_keys(self) -> List[dict]:
-        """列出所有API密钥信息（不包含密钥本身）"""
-        return [
-            {
-                "name": info["name"],
-                "created_at": info["created_at"],
-                "expires_at": info["expires_at"],
-                "is_active": info["is_active"],
-                "usage_count": info["usage_count"],
-                "rate_limit": info["rate_limit"]
-            }
-            for info in self.api_keys.values()
-        ]
+    def list_api_keys(self, include_inactive: bool = False) -> List[Dict]:
+        """
+        列出所有API密钥信息（不包含密钥本身）
+        
+        Args:
+            include_inactive: 是否包含已撤销的密钥
+            
+        Returns:
+            List[Dict]: 密钥信息列表
+        """
+        session = get_db_session()
+        try:
+            query = session.query(APIKey)
+            if not include_inactive:
+                query = query.filter(APIKey.is_active == True)
+            
+            keys = query.all()
+            return [key.to_dict() for key in keys]
+            
+        except Exception as e:
+            logger.error(f"Error listing API keys: {e}")
+            return []
+        finally:
+            session.close()
     
-    def get_key_info(self, api_key: str) -> Optional[dict]:
-        """获取API密钥信息"""
-        return self.api_keys.get(api_key)
+    def get_key_info(self, api_key: str) -> Optional[Dict]:
+        """
+        获取API密钥信息
+        
+        Args:
+            api_key: API密钥
+            
+        Returns:
+            Optional[Dict]: 密钥信息
+        """
+        session = get_db_session()
+        try:
+            key_record = session.query(APIKey).filter(APIKey.api_key == api_key).first()
+            
+            if key_record:
+                return key_record.to_dict()
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting key info: {e}")
+            return None
+        finally:
+            session.close()
+    
+    def update_key_description(self, api_key: str, description: str) -> bool:
+        """
+        更新密钥描述
+        
+        Args:
+            api_key: API密钥
+            description: 新的描述
+            
+        Returns:
+            bool: 是否成功更新
+        """
+        session = get_db_session()
+        try:
+            key_record = session.query(APIKey).filter(APIKey.api_key == api_key).first()
+            
+            if not key_record:
+                return False
+            
+            key_record.description = description
+            session.commit()
+            
+            logger.info(f"Updated description for API key: {key_record.name}")
+            return True
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error updating key description: {e}")
+            return False
+        finally:
+            session.close()
+    
+    def set_admin_status(self, api_key: str, is_admin: bool) -> bool:
+        """
+        设置密钥的管理员状态
+        
+        Args:
+            api_key: API密钥
+            is_admin: 是否设为管理员
+            
+        Returns:
+            bool: 是否成功设置
+        """
+        session = get_db_session()
+        try:
+            key_record = session.query(APIKey).filter(APIKey.api_key == api_key).first()
+            
+            if not key_record:
+                logger.warning(f"Attempted to set admin status for non-existent key: {api_key[:8]}...")
+                return False
+            
+            key_record.is_admin = is_admin
+            session.commit()
+            
+            logger.info(f"Admin status for API key {key_record.name} set to {is_admin}")
+            return True
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error setting admin status for key {api_key[:8]}: {e}")
+            return False
+        finally:
+            session.close()
+    
+    def cleanup_expired_keys(self) -> int:
+        """
+        清理已过期的密钥（设置为非活跃状态）
+        
+        Returns:
+            int: 清理的密钥数量
+        """
+        session = get_db_session()
+        try:
+            now = datetime.utcnow()
+            expired_keys = session.query(APIKey).filter(
+                APIKey.expires_at < now,
+                APIKey.is_active == True
+            ).all()
+            
+            count = 0
+            for key in expired_keys:
+                key.is_active = False
+                count += 1
+            
+            session.commit()
+            
+            if count > 0:
+                logger.info(f"Cleaned up {count} expired API keys")
+            
+            return count
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error cleaning up expired keys: {e}")
+            return 0
+        finally:
+            session.close()
 
 
 # 全局鉴权服务实例

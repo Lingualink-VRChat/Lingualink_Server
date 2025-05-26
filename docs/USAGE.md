@@ -84,31 +84,85 @@ curl -H "X-API-Key: your-api-key" \
 
 ## API密钥管理
 
+Lingualink Server 使用基于 SQLite 数据库的 API 密钥管理系统。
+你可以使用 `manage_api_keys.py` 工具来管理密钥。
+
 ### 生成新密钥
 
+#### 本地模式 (推荐)
 ```bash
-# 命令行生成
-uv run generate-api-key --name "new-key"
+# 生成永久密钥
+python3 manage_api_keys.py --local generate --name "my-key" --description "My main key"
 
-# 通过API生成
+# 生成30天有效期的管理员密钥
+python3 manage_api_keys.py --local generate --name "temp-admin" --expires-in-days 30 --description "Temporary admin access" --make-admin
+```
+
+#### 远程模式 (需要服务器运行和有效的管理员API密钥)
+```bash
+# 远程生成永久密钥
+python3 manage_api_keys.py --api-key <admin_key> generate --name "remote-key"
+
+# 远程生成带有效期密钥
+python3 manage_api_keys.py --api-key <admin_key> generate --name "remote-temp" --expires-in-days 7
+```
+
+#### 通过API生成
+```bash
 curl -X POST "http://localhost:5000/api/v1/auth/generate_key" \
-  -H "X-API-Key: your-existing-key" \
-  -d "name=new-key&expires_in_days=30"
+  -H "X-API-Key: <your_admin_key>" \
+  -d "name=api-generated-key&expires_in_days=30&description=Key via API"
 ```
 
-### 列出所有密钥
+### 管理现有密钥
 
+#### 列出所有密钥
 ```bash
-curl -H "X-API-Key: your-api-key" \
-  http://localhost:5000/api/v1/auth/keys
+# 本地模式
+python3 manage_api_keys.py --local list
+
+# 本地模式 (包含已撤销密钥)
+python3 manage_api_keys.py --local list --include-inactive
+
+# 远程模式
+python3 manage_api_keys.py --api-key <your_key> list
 ```
 
-### 撤销密钥
-
+#### 验证密钥状态
 ```bash
-curl -X POST "http://localhost:5000/api/v1/auth/revoke_key" \
-  -H "X-API-Key: your-api-key" \
-  -d "api_key_to_revoke=lls_key_to_revoke"
+# 本地模式
+python3 manage_api_keys.py --local verify --api-key <key_to_verify>
+
+# 远程模式
+python3 manage_api_keys.py --api-key <key_to_verify> verify
+```
+
+#### 撤销密钥
+```bash
+# 本地模式
+python3 manage_api_keys.py --local revoke --key <key_to_revoke>
+
+# 远程模式
+python3 manage_api_keys.py --api-key <admin_key> revoke --key <key_to_revoke>
+```
+
+#### 更新密钥描述 (通过API)
+```bash
+curl -X PUT "http://localhost:5000/api/v1/auth/update_description" \
+  -H "X-API-Key: <admin_key>" \
+  -d "api_key_to_update=<key_to_update>&description=New description"
+```
+
+#### 清理过期密钥 (通过API)
+```bash
+curl -X POST "http://localhost:5000/api/v1/auth/cleanup_expired" \
+  -H "X-API-Key: <admin_key>"
+```
+
+#### 设置/撤销管理员权限 (仅本地模式)
+```bash
+python3 manage_api_keys.py --local set-admin <api_key_value> true
+python3 manage_api_keys.py --local set-admin <api_key_value> false
 ```
 
 ## 开发和调试
@@ -166,8 +220,9 @@ python --version  # 需要3.13+
 **问题**: `401 Unauthorized`
 **解决**:
 - 检查密钥格式是否正确（以 `lls_` 开头）
-- 确认密钥已添加到 `.env` 文件的 `API_KEYS` 中
+- 确认密钥是否已在数据库中创建并激活
 - 验证密钥是否已过期或被撤销
+- 使用 `python3 manage_api_keys.py --local list` 查看密钥状态
 
 ### 3. 文件上传失败
 

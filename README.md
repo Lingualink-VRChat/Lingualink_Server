@@ -79,21 +79,20 @@ VLLM_SERVER_URL=http://your-vllm-server:8000
 MODEL_NAME=your-model-name
 API_KEY=your-llm-api-key
 
-# 生成 API 密钥
-API_KEYS=["your-generated-api-key"]
+# 应用密钥 (非常重要，用于内部加密)
+SECRET_KEY=your_generated_strong_secret_key
+
+# 数据库文件路径 (用于存储API密钥)
+DATABASE_PATH=data/api_keys.db
 ```
 
-### 4. 生成 API 密钥
+### 4. 生成第一个 API 密钥
 
+使用 `manage_api_keys.py` 工具 (本地模式) 生成第一个管理员API密钥：
 ```bash
-# 使用 uv
-uv run generate-api-key --name "my-first-key"
-
-# 或直接运行
-python -m src.lingualink.utils.key_generator --name "my-first-key"
+python3 manage_api_keys.py --local generate --name "admin-key" --description "Administrator key"
 ```
-
-将生成的密钥添加到 `.env` 文件的 `API_KEYS` 中。
+**重要**: 妥善保管此密钥，它将用于后续API请求认证和管理其他密钥。
 
 ### 5. 启动服务
 
@@ -182,18 +181,39 @@ curl -X POST "http://localhost:5000/api/v1/translate_audio" \
 
 ### 管理 API 密钥
 
+使用 `manage_api_keys.py` 工具管理API密钥：
+
+#### 基本密钥操作 (本地模式)
 ```bash
-# 生成新密钥
-curl -X POST "http://localhost:5000/api/v1/auth/generate_key" \
-  -H "X-API-Key: your-api-key" \
-  -d "name=new-key&expires_in_days=30"
+# 生成永久密钥
+python3 manage_api_keys.py --local generate --name "permanent-key" --description "Permanent key"
+
+# 生成30天有效期的密钥
+python3 manage_api_keys.py --local generate --name "temp-key" --expires-in-days 30 --description "Temporary key"
 
 # 列出所有密钥
-curl -H "X-API-Key: your-api-key" \
+python3 manage_api_keys.py --local list
+
+# 验证密钥状态
+python3 manage_api_keys.py --local verify --api-key <key_to_verify>
+
+# 撤销密钥
+python3 manage_api_keys.py --local revoke --key <key_to_revoke>
+```
+
+#### 通过API管理 (需要运行服务和有效密钥)
+```bash
+# 通过API生成新密钥
+curl -X POST "http://localhost:5000/api/v1/auth/generate_key" \
+  -H "X-API-Key: <admin_key>" \
+  -d "name=new-key&expires_in_days=30&description=API generated key"
+
+# 列出所有密钥 (API)
+curl -H "X-API-Key: <admin_key>" \
   "http://localhost:5000/api/v1/auth/keys"
 
-# 验证密钥
-curl -H "X-API-Key: your-api-key" \
+# 验证密钥 (API)
+curl -H "X-API-Key: <key_to_verify>" \
   "http://localhost:5000/api/v1/auth/verify"
 ```
 
@@ -212,7 +232,8 @@ curl -H "X-API-Key: your-api-key" \
 | `MAX_UPLOAD_SIZE` | `16777216` | 最大上传文件大小 (字节) |
 | `ALLOWED_EXTENSIONS` | `["wav"]` | 允许的文件扩展名 |
 | `AUTH_ENABLED` | `true` | 是否启用鉴权 |
-| `API_KEYS` | `[]` | API 密钥列表 |
+| `SECRET_KEY` | `your-secret-key-change-this` | 应用内部加密密钥 |
+| `DATABASE_PATH` | `data/api_keys.db` | API密钥数据库路径 |
 | `DEFAULT_TARGET_LANGUAGES` | `["英文", "日文"]` | 默认目标语言 |
 
 ### 禁用鉴权 (仅用于开发)
@@ -312,7 +333,7 @@ SECRET_KEY=your-very-secure-secret-key
 
 2. **API 密钥无效**:
    - 确保密钥格式正确 (以 `lls_` 开头)
-   - 检查密钥是否在 `API_KEYS` 列表中
+   - 使用 `manage_api_keys.py --local list` 检查密钥是否存在、是否激活、是否过期
 
 3. **文件上传失败**:
    - 检查文件格式是否为 WAV

@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="your-secret-key-change-this", env="SECRET_KEY")
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     
-    # API Key 配置 (简单鉴权)
-    api_keys: List[str] = Field(default=[], env="API_KEYS")
+    # 数据库配置
+    database_path: str = Field(default="data/api_keys.db", env="DATABASE_PATH")
     
     # 默认语言配置
     default_target_languages: List[str] = Field(default=["英文", "日文"], env="DEFAULT_TARGET_LANGUAGES")
@@ -39,5 +39,5 @@ class Settings(BaseSettings):
         case_sensitive = False
 
 
-# 全局配置实例
+# 全局设置实例
 settings = Settings() 
