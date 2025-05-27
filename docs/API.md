@@ -97,18 +97,26 @@ python3 manage_api_keys.py --api-key <admin_key> generate --name "my-key" --expi
 **需要鉴权**
 
 **请求参数**:
-- `audio_file` (file, required): 音频文件 (.wav 格式)
+- `audio_file` (file, required): 音频文件 (支持 .wav, .opus, .mp3, .flac, .m4a, .aac 等格式)
 - `user_prompt` (string, optional): 用户提示词，默认为"请处理下面的音频。"
 - `target_languages` (array[string], optional): 目标语言列表，如 ["英文", "日文"]
 
 **请求示例**:
 ```bash
+# 使用WAV文件
 curl -X POST "http://localhost:5000/api/v1/translate_audio" \
   -H "X-API-Key: lls_your_api_key" \
   -F "audio_file=@example.wav" \
   -F "user_prompt=请转录并翻译这段音频" \
   -F "target_languages=英文" \
   -F "target_languages=日文"
+
+# 使用OPUS文件（高压缩率，自动转换）
+curl -X POST "http://localhost:5000/api/v1/translate_audio" \
+  -H "X-API-Key: lls_your_api_key" \
+  -F "audio_file=@voice_message.opus" \
+  -F "user_prompt=请处理这段语音消息" \
+  -F "target_languages=英文"
 ```
 
 **成功响应示例**:
@@ -129,7 +137,7 @@ curl -X POST "http://localhost:5000/api/v1/translate_audio" \
 ```json
 {
   "status": "error",
-  "message": "File type not allowed. Allowed types: wav",
+  "message": "File type not allowed. Allowed types: wav, opus",
   "details": null
 }
 ```
@@ -144,7 +152,7 @@ curl -X POST "http://localhost:5000/api/v1/translate_audio" \
 {
   "status": "success",
   "data": {
-    "supported_formats": ["wav"],
+    "supported_formats": ["wav", "opus"],
     "max_file_size_mb": 16,
     "default_target_languages": ["英文", "日文"]
   }

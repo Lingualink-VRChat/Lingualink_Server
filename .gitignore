@@ -26,3 +26,5 @@ logs/
 .vscode/
 .idea/
 .DS_Store
+
+lingualink.pid

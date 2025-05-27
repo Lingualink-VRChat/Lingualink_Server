@@ -1,6 +1,6 @@
 [Unit]
 Description=Lingualink Server - 音频转录和翻译服务
-Documentation=https://github.com/your-org/lingualink-server
+Documentation=https://github.com/Lingualink-VRChat/Lingualink_Server
 After=network.target
 Wants=network.target
 

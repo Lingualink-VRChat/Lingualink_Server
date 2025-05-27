@@ -97,20 +97,16 @@ async def get_current_admin_api_key(
     if api_key == "auth_disabled": # 处理认证禁用的情况
         return api_key
 
-    session = get_db_session() # Assuming you have this utility from database.py
-    try:
-        key_record = session.query(APIKey).filter(APIKey.api_key == api_key).first()
-        # At this point, get_current_api_key has already validated the key exists and is active/not expired.
-        # We just need to check the is_admin flag.
-        if key_record and key_record.is_admin:
-            return api_key
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "status": "error",
-                    "message": "Admin privileges required for this operation."
-                }
-            )
-    finally:
-        session.close() 
+    # 直接使用auth_service验证管理员权限（包含缓存支持）
+    is_valid, is_admin = auth_service.verify_api_key(api_key)
+    
+    if is_valid and is_admin:
+        return api_key
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "status": "error",
+                "message": "Admin privileges required for this operation."
+            }
+        ) 

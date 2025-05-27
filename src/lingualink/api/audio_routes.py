@@ -25,7 +25,7 @@ audio_processor = AudioProcessor()
     description="上传音频文件，进行转录和翻译处理"
 )
 async def translate_audio(
-    audio_file: UploadFile = File(..., description="音频文件 (.wav格式)"),
+    audio_file: UploadFile = File(..., description="音频文件 (支持 .wav, .opus 等格式)"),
     user_prompt: str = Form(default=settings.default_user_query, description="用户提示词"),
     target_languages: Optional[List[str]] = Form(default=None, description="目标语言列表"),
     api_key: str = Depends(get_current_api_key)
@@ -33,18 +33,19 @@ async def translate_audio(
     """
     音频翻译接口
     
-    - **audio_file**: 上传的音频文件，目前仅支持 .wav 格式
+    - **audio_file**: 上传的音频文件，支持 .wav, .opus 等多种格式
     - **user_prompt**: 用户提示词，默认为"请处理下面的音频。"
     - **target_languages**: 目标语言列表，如 ["英文", "日文"]
     """
-    temp_file_path: Optional[str] = None
+    wav_file_path: Optional[str] = None
+    original_file_path: Optional[str] = None
     
     try:
         logger.info(f"Received translation request: filename={audio_file.filename}, "
                    f"user_prompt={user_prompt}, target_languages={target_languages}")
         
-        # 保存上传的文件
-        temp_file_path = await audio_processor.save_upload_file(audio_file)
+        # 处理和转换音频文件
+        wav_file_path, original_file_path = await audio_processor.process_and_convert_audio(audio_file)
         
         # 处理目标语言
         final_target_languages: Optional[List[str]] = None
@@ -60,10 +61,10 @@ async def translate_audio(
         system_prompt = llm_service.generate_system_prompt(final_target_languages)
         logger.info(f"Using system prompt with languages: {final_target_languages or settings.default_target_languages}")
         
-        # 在线程池中处理音频
+        # 在线程池中处理音频（使用转换后的WAV文件）
         result = await run_in_threadpool(
             llm_service.process_audio,
-            temp_file_path,
+            wav_file_path,
             system_prompt,
             user_prompt
         )
@@ -103,8 +104,8 @@ async def translate_audio(
         )
     finally:
         # 清理临时文件
-        if temp_file_path:
-            audio_processor.cleanup_temp_file(temp_file_path)
+        if wav_file_path and original_file_path:
+            audio_processor.cleanup_audio_files(wav_file_path, original_file_path)
         
         # 关闭上传文件
         if audio_file:

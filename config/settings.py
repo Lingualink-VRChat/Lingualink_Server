@@ -19,12 +19,21 @@ class Settings(BaseSettings):
     
     # 文件上传配置
     max_upload_size: int = Field(default=16 * 1024 * 1024, env="MAX_UPLOAD_SIZE")  # 16MB
-    allowed_extensions: List[str] = Field(default=["wav"], env="ALLOWED_EXTENSIONS")
+    allowed_extensions: List[str] = Field(default=["wav", "opus", "mp3", "flac", "m4a", "aac", "ogg"], env="ALLOWED_EXTENSIONS")
+    
+    # 音频转换性能配置 (新增)
+    max_concurrent_audio_conversions: int = Field(default=10, env="MAX_CONCURRENT_AUDIO_CONVERSIONS")
+    audio_converter_workers: int = Field(default=5, env="AUDIO_CONVERTER_WORKERS")
     
     # 鉴权配置
     auth_enabled: bool = Field(default=True, env="AUTH_ENABLED")
     secret_key: str = Field(default="your-secret-key-change-this", env="SECRET_KEY")
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
+    
+    # Redis缓存配置
+    redis_enabled: bool = Field(default=False, env="REDIS_ENABLED")
+    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
+    api_key_cache_ttl: int = Field(default=300, env="API_KEY_CACHE_TTL")  # 5分钟缓存
     
     # 数据库配置
     database_path: str = Field(default="data/api_keys.db", env="DATABASE_PATH")

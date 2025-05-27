@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from config.settings import settings
 from src.lingualink.utils.logging_config import setup_logging
-from src.lingualink.api import audio_router, auth_router, health_router
+from src.lingualink.api import audio_router, auth_router, health_router, cache_router
 
 # 设置日志
 setup_logging()
@@ -37,6 +37,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(audio_router)
 app.include_router(auth_router)
+app.include_router(cache_router)
 
 # 全局异常处理器
 @app.exception_handler(HTTPException)

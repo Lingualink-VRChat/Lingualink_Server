@@ -4,6 +4,7 @@ from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from config.settings import settings
 from ..models.database import APIKey, get_db_session
+from .redis_cache import redis_cache
 import logging
 
 logger = logging.getLogger(__name__)
@@ -60,19 +61,42 @@ class AuthService:
         finally:
             session.close()
     
-    def verify_api_key(self, api_key: str) -> bool:
+    def verify_api_key(self, api_key: str) -> tuple[bool, bool]:
         """
-        验证API密钥
+        验证API密钥（支持Redis缓存）
         
         Args:
             api_key: API密钥
             
         Returns:
-            bool: 是否有效
+            tuple[bool, bool]: (is_valid, is_admin)
         """
         if not settings.auth_enabled:
-            return True
+            return True, False
         
+        # 首先尝试从Redis缓存获取
+        cached_result = redis_cache.get_api_key_auth(api_key)
+        if cached_result is not None:
+            is_valid, is_admin = cached_result
+            if is_valid:
+                # 异步更新使用统计（不影响响应时间）
+                self._async_update_usage_stats(api_key)
+                logger.debug(f"API key verified from cache: {api_key[:8]}...")
+                return True, is_admin
+        
+        # 缓存未命中，查询数据库
+        return self._verify_api_key_from_db(api_key)
+    
+    def _verify_api_key_from_db(self, api_key: str) -> tuple[bool, bool]:
+        """
+        从数据库验证API密钥
+        
+        Args:
+            api_key: API密钥
+            
+        Returns:
+            tuple[bool, bool]: (is_valid, is_admin)
+        """
         session = get_db_session()
         try:
             key_record = session.query(APIKey).filter(APIKey.api_key == api_key).first()
@@ -95,7 +119,10 @@ class AuthService:
             key_record.last_used_at = datetime.utcnow()
             session.commit()
             
-            logger.debug(f"API key verified: {key_record.name}, usage: {key_record.usage_count}")
+            # 缓存验证结果
+            redis_cache.set_api_key_auth(api_key, True, is_admin)
+            
+            logger.debug(f"API key verified from DB: {key_record.name}, usage: {key_record.usage_count}")
             return True, is_admin
             
         except Exception as e:
@@ -104,6 +131,25 @@ class AuthService:
             return False, False
         finally:
             session.close()
+    
+    def _async_update_usage_stats(self, api_key: str):
+        """
+        异步更新API密钥使用统计（用于缓存命中的情况）
+        
+        Args:
+            api_key: API密钥
+        """
+        # 这里可以用异步队列来批量更新，暂时用同步方式
+        try:
+            session = get_db_session()
+            key_record = session.query(APIKey).filter(APIKey.api_key == api_key).first()
+            if key_record:
+                key_record.usage_count += 1
+                key_record.last_used_at = datetime.utcnow()
+                session.commit()
+            session.close()
+        except Exception as e:
+            logger.error(f"Error updating usage stats: {e}")
     
     def revoke_api_key(self, api_key: str) -> bool:
         """
@@ -124,6 +170,9 @@ class AuthService:
             
             key_record.is_active = False
             session.commit()
+            
+            # 立即清除缓存
+            redis_cache.invalidate_api_key(api_key)
             
             logger.info(f"API key revoked: {key_record.name}")
             return True
