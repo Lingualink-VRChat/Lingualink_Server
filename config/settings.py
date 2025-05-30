@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     llm_backends: Optional[List[Dict[str, Any]]] = Field(default=None, env="LLM_BACKENDS")
     
     # 负载均衡配置 (新增)
-    load_balance_enabled: bool = Field(default=None, env="LOAD_BALANCE_ENABLED")  # 显式控制开关
+    load_balance_enabled: Optional[bool] = Field(default=None, env="LOAD_BALANCE_ENABLED")  # 显式控制开关
     load_balance_strategy: str = Field(default="round_robin", env="LOAD_BALANCE_STRATEGY")
     health_check_interval: float = Field(default=30.0, env="HEALTH_CHECK_INTERVAL")
     max_retries: int = Field(default=2, env="MAX_RETRIES")
